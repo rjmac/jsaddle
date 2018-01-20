@@ -15,10 +15,13 @@ import Data.Aeson (encode, decode)
 import Data.ByteString (useAsCString, packCString)
 import Data.ByteString.Char8 (unpack)
 import Data.ByteString.Lazy (ByteString, toStrict, fromStrict)
+import Data.Char (ord)
 import Data.Default (def, Default)
 import Data.Monoid ((<>))
 import Data.Text (Text)
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import Numeric (showHex)
 
 import Foreign.C.String (CString, newCString)
 import Foreign.Ptr (FunPtr, Ptr)
@@ -50,7 +53,7 @@ jsaddleInit :: JSM () -> FunPtr (CString -> IO ()) -> IO (Ptr NativeCallbacks)
 jsaddleInit jsm evaluateJavascriptAsyncPtr = do
   let evaluateJavascriptAsync = mkCallback evaluateJavascriptAsyncPtr
   (processResult, processSyncResult, start) <- runJavaScript (\batch ->
-    useAsCString (toStrict $ "runJSaddleBatch(" <> encode batch <> ");")
+    useAsCString (toStrict $ "runJSaddleBatch(" <> convert (encode batch) <> ");")
       evaluateJavascriptAsync) jsm
   jsaddleStartPtr <- wrapStartCallback $ void $ forkIO start
   jsaddleResultPtr <- wrapMessageCallback $ \s -> do
@@ -62,7 +65,7 @@ jsaddleInit jsm evaluateJavascriptAsyncPtr = do
     result <- decode . fromStrict <$> packCString s
     case result of
       Nothing -> error $ "jsaddle message decode failed: " <> show result
-      Just r -> newCString =<< unpack . toStrict . encode <$> processSyncResult r
+      Just r -> newCString =<< unpack . toStrict . convert . encode <$> processSyncResult r
   jsaddleJsPtr <- newCString $ unpack $ toStrict jsaddleJs
   jsaddleHtmlPtr <- newCString $ unpack $ toStrict indexHtml
   new NativeCallbacks
@@ -72,6 +75,13 @@ jsaddleInit jsm evaluateJavascriptAsyncPtr = do
     , _nativeCallbacks_jsaddleJsData = jsaddleJsPtr
     , _nativeCallbacks_jsaddleHtmlData = jsaddleHtmlPtr
     }
+
+convert :: ByteString -> ByteString
+convert = fromStrict . T.encodeUtf8 . T.concatMap go . T.decodeUtf8 . toStrict
+  where
+    go c | c < '\200' = T.singleton c
+         | otherwise = "\\u{" <> T.pack (showHex (ord c) "") <> "}"
+
 
 data AppConfig = AppConfig
   { _appConfig_mainActivityOnCreate :: IO ()
