@@ -92,7 +92,7 @@ runBatch send sendSync = "\
     \                                break;\n\
     \                            case \"StringToValue\":\n\
     \                                var n = d.contents[1];\n\
-    \                                jsaddle_values.set(n, d.contents[0]);\n\
+    \                                jsaddle_values.set(n, d.contents[0]); console.log(d.contents[0]);\n\
     \                                break;\n\
     \                            case \"GetPropertyByName\":\n\
     \                                var n = d.contents[2];\n\
