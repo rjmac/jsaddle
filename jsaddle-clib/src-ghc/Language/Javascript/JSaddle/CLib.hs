@@ -22,6 +22,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Numeric (showHex)
+import System.IO (hFlush, stdout)
 
 import Foreign.C.String (CString, newCString)
 import Foreign.Ptr (FunPtr, Ptr)
@@ -52,20 +53,33 @@ foreign import ccall safe "wrapper"
 jsaddleInit :: JSM () -> FunPtr (CString -> IO ()) -> IO (Ptr NativeCallbacks)
 jsaddleInit jsm evaluateJavascriptAsyncPtr = do
   let evaluateJavascriptAsync = mkCallback evaluateJavascriptAsyncPtr
-  (processResult, processSyncResult, start) <- runJavaScript (\batch ->
-    useAsCString (toStrict $ "runJSaddleBatch(" <> convert (encode batch) <> ");")
+  (processResult, processSyncResult, start) <- runJavaScript (\batch -> do
+    let json = toStrict $ "runJSaddleBatch(" <> convert (encode batch) <> ");"
+    print ("4eval" :: String, json)
+    hFlush stdout
+    useAsCString (json)
       evaluateJavascriptAsync) jsm
   jsaddleStartPtr <- wrapStartCallback $ void $ forkIO start
   jsaddleResultPtr <- wrapMessageCallback $ \s -> do
-    result <- decode . fromStrict <$> packCString s
+    x <- fromStrict <$> packCString s
+    print ("result" :: String, x)
+    hFlush stdout
+    let result = decode x
     case result of
       Nothing -> error $ "jsaddle message decode failed: " <> show result
       Just r -> processResult r
   jsaddleSyncResultPtr <- wrapSyncCallback $ \s -> do
-    result <- decode . fromStrict <$> packCString s
+    x <- fromStrict <$> packCString s
+    print ("sresult" :: String, x)
+    hFlush stdout
+    let result = decode x
     case result of
       Nothing -> error $ "jsaddle message decode failed: " <> show result
-      Just r -> newCString =<< unpack . toStrict . convert . encode <$> processSyncResult r
+      Just r -> do
+        rBytes <- encode <$> processSyncResult r
+        print ("sresenc" :: String, x)
+        hFlush stdout
+        newCString (unpack . toStrict . convert $ rBytes)
   jsaddleJsPtr <- newCString $ unpack $ toStrict jsaddleJs
   jsaddleHtmlPtr <- newCString $ unpack $ toStrict indexHtml
   new NativeCallbacks

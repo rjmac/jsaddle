@@ -153,7 +153,10 @@ runJavaScript sendBatch entryPoint = do
                             jsval <- wrapJSVal' ctx v
                             throwIO $ JSException jsval
                         r -> return r
-          , doSendAsyncCommand = \cmd -> cmd `deepseq` atomically (writeTChan commandChan $ Left cmd)
+          , doSendAsyncCommand = \cmd -> do
+              print "send!"
+              print cmd
+              cmd `deepseq` atomically (writeTChan commandChan $ Left cmd)
           , addCallback = \(Object (JSVal ioref)) cb -> do
                 val <- readIORef ioref
                 atomically $ modifyTVar' callbacks (M.insert val cb)
@@ -202,6 +205,8 @@ runJavaScript sendBatch entryPoint = do
     _ <- forkIO . numberForeverFromM_ 1 $ \nBatch ->
         readBatch nBatch commandChan >>= \case
             (batch@(Batch cmds _ _), resultMVars) -> do
+                print "Received!"
+                print batch
                 logInfo (\x -> "Sync " <> x <> show (length cmds, last cmds))
                 _ <- tryTakeMVar lastAsyncBatch
                 putMVar lastAsyncBatch batch
